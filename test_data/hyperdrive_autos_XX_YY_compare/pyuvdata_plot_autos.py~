@@ -1,0 +1,114 @@
+from astropy.io import fits
+import numpy as np
+from matplotlib import pyplot as plt
+import os
+from pyuvdata import UVData
+from pyuvdata.data import DATA_PATH
+import glob
+
+def get_unflagged_indices(n_freqs,clip_width=0,n_bands=24):
+    """
+    Returns indices of unflagged frequency channels
+    """
+
+    n_chan = int(n_freqs / n_bands)
+    edge_flags = 2 + clip_width
+    centre_flag = int(n_chan / 2)
+
+    channels = np.arange(n_chan)
+    channels = np.delete(channels,centre_flag)
+    channels = channels[2+clip_width:-(2+clip_width)]
+
+    all_channels = []
+    for n in range(int(n_bands)):
+        for c in channels:
+            all_channels.append(c+(n*n_chan))
+    return all_channels
+
+def read_auto_data(obsid,data_path):
+
+    UV = UVData()
+    gpufiles = glob.glob(data_path + '*gpubox*')
+    filelist = gpufiles.append(data_path + f'{obsid}.metafits')
+
+    #print(gpufiles)
+    
+    UV.read(gpufiles, phase_to_pointing_center=False, flag_init=False)
+
+    return UV
+
+def plot_auto_ratios(uvdata,obsid,n_bands):
+
+    n_freqs = n_bands * 32
+
+    if(n_bands==20):
+        clip_width=1
+    else:
+        clip_width=0
+
+    channels = get_unflagged_indices(n_freqs,clip_width=clip_width,n_bands=n_bands)
+
+    present_ants = uvdata.get_ants()
+
+    for ant in present_ants:
+        auto_data = uvdata.get_data(ant,ant)
+        plt.clf()
+        plt.subplot(2,1,1)
+        for p in range(2):
+            plt.plot(abs(auto_data[0,channels,p]))
+            
+        plt.subplot(2,1,2)
+        plt.plot(abs(auto_data[0,channels,0])/abs(auto_data[0,channels,1]))
+        plt.savefig(f'{obsid}_{ant}_autos.png')
+
+        # write values
+
+        out_file = open(f'{obsid}_{ant}_XX_auto.txt','w+')
+        out_file.write(str(abs(auto_data[0,channels,0])).strip('[]'))
+        out_file.close()
+
+        out_file = open(f'{obsid}_{ant}_YY_auto.txt','w+')
+        out_file.write(str(abs(auto_data[0,channels,1])).strip('[]'))
+        out_file.close()
+        
+    
+    
+def get_unflagged_indices(n_freqs,clip_width=0,n_bands=24):
+    """
+    Returns indices of unflagged frequency channels
+    """
+
+    n_chan = int(n_freqs / n_bands)
+    edge_flags = 2 + clip_width
+    centre_flag = int(n_chan / 2)
+
+    channels = np.arange(n_chan)
+    channels = np.delete(channels,centre_flag)
+    channels = channels[2+clip_width:-(2+clip_width)]
+
+    all_channels = []
+    for n in range(int(n_bands)):
+        for c in channels:
+            all_channels.append(c+(n*n_chan))
+    return all_channels        
+
+
+if __name__ == '__main__':
+
+    
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Foo")
+
+    parser.add_argument('--obsid', default=None,
+        help='Obsid to be plotted')
+    parser.add_argument('--data_dir', default=None,
+        help='Directory containing gpubox and metafits data')
+    parser.add_argument('--n_bands', default=24, type=int,
+        help='Number of coarse bands to plot (Use 20 for ultralow)')
+
+    args = parser.parse_args()
+
+    auto_data = read_auto_data(args.obsid,args.data_dir)
+     
+    plot_auto_ratios(auto_data,args.obsid,n_bands=args.n_bands) 
